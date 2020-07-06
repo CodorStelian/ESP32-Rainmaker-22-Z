@@ -49,6 +49,19 @@ static bool g_rgbpixel_power_state = DEFAULT_RGBPIXEL_POWER_STATE;
 static uint16_t g_rgbpixel_hue = DEFAULT_RGBPIXEL_HUE;
 static uint16_t g_rgbpixel_saturation = DEFAULT_RGBPIXEL_SATURATION;
 static uint16_t g_rgbpixel_value = DEFAULT_RGBPIXEL_BRIGHTNESS;
+static uint8_t rgbpixel_spin_blue_bg[3] = {0, 0, 255};
+static uint8_t rgbpixel_spin_blue_fg[3] = {0, 255, 255};
+static uint8_t rgbpixel_pulse_blue_min[3] = {0, 0, 255};
+static uint8_t rgbpixel_pulse_blue_max[3] = {0, 255, 255};
+static uint8_t rgbpixel_pulse_red_min[3] = {40, 17, 0};
+static uint8_t rgbpixel_pulse_red_max[3] = {255, 17, 0};
+static uint8_t rgbpixel_pulse_green_min[3] = {0, 17, 0};
+static uint8_t rgbpixel_pulse_green_max[3] = {0, 255, 0};
+static esp_timer_handle_t rgbpixel_anim_timer;
+static esp_timer_handle_t rgbpixel_anim_change_timer;
+uint8_t rgbpixel_anim = 0;
+uint8_t rgbpixel_counter = 0;  // Used for rgbpixel framerate
+bool rgbpixel_up = true;   // Used for rgbpixel pulse animation
 
 static esp_timer_handle_t bh1750_sensor_timer;
 static esp_timer_handle_t sht31_sensor_timer;
@@ -120,6 +133,86 @@ static esp_err_t app_driver_rgbpixel_set_pixel(uint32_t hue, uint32_t saturation
     return ESP_OK;
 }
 
+void enhanced_rgbpixel_rgbv2rgb(uint8_t red, uint8_t green, uint8_t blue, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+	*r = red * g_rgbpixel_value * 0.01f;
+	*g = green * g_rgbpixel_value * 0.01f;
+	*b = blue * g_rgbpixel_value * 0.01f;
+}
+
+esp_err_t enhanced_rgbpixel_set_pixel(uint8_t red, uint8_t green, uint8_t blue)
+{
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    enhanced_rgbpixel_rgbv2rgb(red, green, blue, &r, &g, &b);
+	for (int i=0; i<g_rgbpixel_strip_pixels; i++) {
+		g_rgbpixel_strip->set_pixel(g_rgbpixel_strip, i, r, g, b);
+	}
+    return ESP_OK;
+}
+
+esp_err_t enhanced_rgbpixel_anim_spinner(uint8_t cbg[3], uint8_t cfg[3], uint8_t pos)
+{
+	uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    enhanced_rgbpixel_rgbv2rgb(cfg[0], cfg[1], cfg[2], &r, &g, &b);
+	enhanced_rgbpixel_set_pixel(cbg[0], cbg[1], cbg[2]);
+	for (int i=pos; i<pos+2; i++) {
+		g_rgbpixel_strip->set_pixel(g_rgbpixel_strip, i % g_rgbpixel_strip_pixels, r, g, b);
+	}
+    return ESP_OK;
+}
+
+esp_err_t enhanced_rgbpixel_anim_pulse(uint8_t cmin[3], uint8_t cmax[3], double ratio, bool up)
+{
+	double t = (up) ? ratio : 1 - ratio;
+	uint8_t r = (cmin[0] & 0xFF)*(1-t) + (cmax[0] & 0xFF)*t;
+	uint8_t g = (cmin[1] & 0xFF)*(1-t) + (cmax[1] & 0xFF)*t;
+	uint8_t b = (cmin[2] & 0xFF)*(1-t) + (cmax[2] & 0xFF)*t;
+	enhanced_rgbpixel_set_pixel(r, g, b);
+    return ESP_OK;
+}
+
+static void enhanced_rgbpixel_anim(void *priv)
+{
+	if(!g_rgbpixel_power_state)
+	{
+		if(rgbpixel_counter <=23)
+		rgbpixel_counter = rgbpixel_counter + 1;
+		else
+		rgbpixel_counter = 0;
+		if (rgbpixel_counter == 0) {
+			rgbpixel_up = !rgbpixel_up; // swap
+		}
+
+		// 0.0->1.0 per duration
+		double ratio = rgbpixel_counter * 0.041;
+		if(rgbpixel_anim == 0){
+			enhanced_rgbpixel_anim_spinner(rgbpixel_spin_blue_bg, rgbpixel_spin_blue_fg, rgbpixel_counter);
+		} else if(rgbpixel_anim == 1){
+			enhanced_rgbpixel_anim_pulse(rgbpixel_pulse_blue_min, rgbpixel_pulse_blue_max, ratio, rgbpixel_up);
+		} else if(rgbpixel_anim == 2){
+			enhanced_rgbpixel_anim_pulse(rgbpixel_pulse_red_min, rgbpixel_pulse_red_max, ratio, rgbpixel_up);
+		} else if(rgbpixel_anim == 3){
+			enhanced_rgbpixel_anim_pulse(rgbpixel_pulse_green_min, rgbpixel_pulse_green_max, ratio, rgbpixel_up);
+		}
+		g_rgbpixel_strip->refresh(g_rgbpixel_strip, 100);
+	}
+}
+
+static void enhanced_rgbpixel_anim_change(void *priv)
+{
+	if(!g_rgbpixel_power_state)
+	{
+		if(rgbpixel_anim <=2)
+		rgbpixel_anim += 1;
+		else
+		rgbpixel_anim = 0;
+	}
+}
+
 esp_err_t app_driver_rgbpixel_set(uint32_t hue, uint32_t saturation, uint32_t brightness)
 {
     /* Whenever this function is called, light power will be ON */
@@ -156,18 +249,6 @@ esp_err_t app_driver_rgbpixel_set_saturation(uint16_t saturation)
     g_rgbpixel_saturation = saturation;
     return app_driver_rgbpixel_set(g_rgbpixel_hue, g_rgbpixel_saturation, g_rgbpixel_value);
 }
-esp_err_t enhanced_rgbpixel_rgbv2rgb(uint8_t red, uint8_t green, uint8_t blue, uint16_t brightness)
-{
-	double v = g_rgbpixel_value / 100;
-	uint8_t r = red * v;
-	uint8_t g = green * v;
-	uint8_t b = blue * v;
-	for (int i=0; i<g_rgbpixel_strip_pixels; i++) {
-		g_rgbpixel_strip->set_pixel(g_rgbpixel_strip, i, r, g, b);
-	}
-    g_rgbpixel_strip->refresh(g_rgbpixel_strip, 100);
-    return ESP_OK;
-}
 
 static void app_driver_sensor_bh1750_update(void *pvParameters)
 {
@@ -181,7 +262,7 @@ static void app_driver_sensor_bh1750_update(void *pvParameters)
 	if (bh1750_read(&dev17, &lux) != ESP_OK)
 		ESP_LOGE(TAG, "BH1750 error, could not read sensor data");
 	g_sensor_luminosity = lux;
-    esp_rmaker_update_param("Luminosity Sensor", "luminosity", esp_rmaker_float(g_sensor_luminosity)); 
+    esp_rmaker_update_param("Luminosity Sensor", "luminosity", esp_rmaker_float(g_sensor_luminosity));
 }
 static void app_driver_sensor_sht31_update(void *pvParameters)
 {
@@ -236,6 +317,28 @@ esp_err_t app_driver_rgbpixel_init(void)
     } else {
         g_rgbpixel_strip->clear(g_rgbpixel_strip, 100);
     }
+	
+	esp_timer_create_args_t rgbpixel_anim_timer_conf = {
+        .callback = enhanced_rgbpixel_anim,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "rgbpixel_anim_tm"
+    };esp_timer_create_args_t rgbpixel_anim_change_timer_conf = {
+        .callback = enhanced_rgbpixel_anim_change,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "rgbpixel_anim_change_tm"
+    };
+	if (esp_timer_create(&rgbpixel_anim_timer_conf, &rgbpixel_anim_timer) == ESP_OK) {
+        esp_timer_start_periodic(rgbpixel_anim_timer, DEFAULT_REFRESH_ANIM_PERIOD_RGBPIXEL * 1000U);
+    }
+	else{
+		return ESP_FAIL;
+	}
+	if (esp_timer_create(&rgbpixel_anim_change_timer_conf, &rgbpixel_anim_change_timer) == ESP_OK) {
+        esp_timer_start_periodic(rgbpixel_anim_change_timer, DEFAULT_CHANGE_ANIM_PERIOD_RGBPIXEL * 1000000U);
+    }
+	else{
+		return ESP_FAIL;
+	}
     return ESP_OK;
 }
 
