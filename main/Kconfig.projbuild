@@ -1,0 +1,13 @@
+menu "Example Configuration"
+
+    config APP_LED_GPIO
+        int "RGB LED GPIO"
+        default 15
+        help
+            Set the WS2812 RGB LED GPIO.
+	config I2CDEV_TIMEOUT
+		int "I2C transaction timeout, milliseconds"
+		default 1000
+		range 100 5000
+
+endmenu
