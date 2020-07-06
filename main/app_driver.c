@@ -37,10 +37,10 @@
 #define BUTTON_ACTIVE_LEVEL  0
 /* This is the GPIO on which the power will be set */
 #define OUTPUT_GPIO_RGB_STRIP 5
-#define OUTPUT_GPIO_RELAY_1 19
-#define OUTPUT_GPIO_RELAY_2 18
-#define OUTPUT_GPIO_RELAY_3 17
-#define OUTPUT_GPIO_RELAY_4 16
+#define OUTPUT_GPIO_RELAY_0 19
+#define OUTPUT_GPIO_RELAY_1 18
+#define OUTPUT_GPIO_RELAY_2 17
+#define OUTPUT_GPIO_RELAY_3 16
 
 static uint16_t g_luminosity;
 static float g_temperature;
@@ -48,11 +48,12 @@ static float g_humidity;
 static uint16_t g_hue = DEFAULT_HUE;
 static uint16_t g_saturation = DEFAULT_SATURATION;
 static uint16_t g_value = DEFAULT_BRIGHTNESS;
-static bool g_rgb_power = DEFAULT_RGB_LIGHT_POWER;
 static led_strip_t *g_strip;
 static esp_timer_handle_t bh1750_sensor_timer;
 static esp_timer_handle_t sht31_sensor_timer;
-static bool g_light_power = DEFAULT_LIGHT_POWER;
+static bool g_light0_power_state = DEFAULT_LIGHT0_POWER_STATE;
+static bool g_light1_power_state = DEFAULT_LIGHT1_POWER_STATE;
+static bool g_rgb_power_state = DEFAULT_RGB_LIGHT_POWER_STATE;
 static const char *TAG = "app_driver";
 
 static void led_strip_hsv2rgb(uint32_t h, uint32_t s, uint32_t v, uint32_t *r, uint32_t *g, uint32_t *b)
@@ -119,16 +120,16 @@ static esp_err_t app_light_set_led(uint32_t hue, uint32_t saturation, uint32_t b
 esp_err_t app_light_set(uint32_t hue, uint32_t saturation, uint32_t brightness)
 {
     /* Whenever this function is called, light power will be ON */
-    if (!g_rgb_power) {
-        g_rgb_power = true;
-        esp_rmaker_update_param("RGB Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(g_rgb_power));
+    if (!g_rgb_power_state) {
+        g_rgb_power_state = true;
+        esp_rmaker_update_param("RGB Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(g_rgb_power_state));
     }
     return app_light_set_led(hue, saturation, brightness);
 }
 
 esp_err_t app_light_set_power(bool power)
 {
-    g_rgb_power = power;
+    g_rgb_power_state = power;
     if (power) {
         app_light_set(g_hue, g_saturation, g_value);
     } else {
@@ -214,7 +215,7 @@ esp_err_t app_light_init(void)
         ESP_LOGE(TAG, "Install WS2812 driver failed");
         return ESP_FAIL;
     }
-    if (g_rgb_power) {
+    if (g_rgb_power_state) {
         app_light_set_led(g_hue, g_saturation, g_value);
     } else {
         g_strip->clear(g_strip, 100);
@@ -251,20 +252,28 @@ esp_err_t app_sensor_init(void)
 
 static void push_btn_cb(void *arg)
 {
-	ESP_LOGI(TAG, "Turn off all lights and update cloud status");
-    app_driver_set_gpio("all", !g_light_power);
-	esp_rmaker_update_param("Bedroom Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(g_light_power));
-	esp_rmaker_update_param("Wall Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(g_light_power));
-	app_light_set_power(!g_rgb_power);
-    esp_rmaker_update_param("RGB Light","power", esp_rmaker_bool(g_rgb_power));
+	ESP_LOGI(TAG, "Change state of Bedroom Light and sync it with cloud");
+	bool new_light0_state = !g_light0_power_state;
+	app_driver_set_light0_state(new_light0_state);
+	esp_rmaker_update_param("Bedroom Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(new_light0_state));
 }
 
 static void button_press_3sec_cb(void *arg)
 {
-	ESP_LOGI(TAG, "Erase flash in progress, restart is required");
+	ESP_LOGW(TAG, "Erase flash in progress, restart is required");
     nvs_flash_deinit();
     nvs_flash_erase();
     esp_restart();
+}
+
+static void set_light0_power_state(bool target)
+{
+	gpio_set_level(OUTPUT_GPIO_RELAY_0, target);
+}
+
+static void set_light1_power_state(bool target)
+{
+	gpio_set_level(OUTPUT_GPIO_RELAY_1, target);
 }
 
 void app_driver_init()
@@ -280,29 +289,38 @@ void app_driver_init()
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = 1,
     };
-	uint64_t pin_mask = (((uint64_t)1 << OUTPUT_GPIO_RELAY_1) | ((uint64_t)1 << OUTPUT_GPIO_RELAY_2) | ((uint64_t)1 << OUTPUT_GPIO_RELAY_3) | ((uint64_t)1 << OUTPUT_GPIO_RELAY_4));
+	uint64_t pin_mask = (((uint64_t)1 << OUTPUT_GPIO_RELAY_0) | ((uint64_t)1 << OUTPUT_GPIO_RELAY_1) | ((uint64_t)1 << OUTPUT_GPIO_RELAY_2) | ((uint64_t)1 << OUTPUT_GPIO_RELAY_3));
     io_conf.pin_bit_mask = pin_mask;
     /* Configure the GPIO */
     gpio_config(&io_conf);
-	gpio_set_level(OUTPUT_GPIO_RELAY_1, false);
-	gpio_set_level(OUTPUT_GPIO_RELAY_2, false);
-	gpio_set_level(OUTPUT_GPIO_RELAY_3, false);
-	gpio_set_level(OUTPUT_GPIO_RELAY_4, false);
 	app_sensor_init();
 	app_light_init();
 }
 
-esp_err_t app_driver_set_gpio(const char *dev_name, bool value)
+int IRAM_ATTR app_driver_set_light0_state(bool state)
 {
-	if (strcmp(dev_name, "Bedroom Light") == 0) {
-        gpio_set_level(OUTPUT_GPIO_RELAY_1, value);
-    } else if (strcmp(dev_name, "Wall Light") == 0) {
-        gpio_set_level(OUTPUT_GPIO_RELAY_2, value);
-	} else if (strcmp(dev_name, "all") == 0) {
-		gpio_set_level(OUTPUT_GPIO_RELAY_1, value);
-        gpio_set_level(OUTPUT_GPIO_RELAY_2, value);
-    } else {
-        return ESP_FAIL;
-    }
-    return ESP_OK;
+	if(g_light0_power_state != state) {
+		g_light0_power_state = state;
+		set_light0_power_state(g_light0_power_state);
+	}
+	return ESP_OK;
+}
+
+int IRAM_ATTR app_driver_set_light1_state(bool state)
+{
+	if(g_light1_power_state != state) {
+		g_light1_power_state = state;
+		set_light1_power_state(g_light1_power_state);
+	}
+	return ESP_OK;
+}
+
+bool app_driver_get_light0_state(void)
+{
+	return g_light0_power_state;
+}
+
+bool app_driver_get_light1_state(void)
+{
+	return g_light1_power_state;
 }

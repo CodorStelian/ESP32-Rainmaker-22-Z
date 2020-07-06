@@ -48,10 +48,20 @@ static esp_err_t common_callback(const char *dev_name, const char *name, esp_rma
 			app_light_set_saturation(val.val.i);
 		}
 	}
-	else if (app_driver_set_gpio(dev_name, val.val.b) == ESP_OK) {
-		ESP_LOGI(TAG, "Received value = %s for %s - %s",
-                val.val.b? "true" : "false", dev_name, name);
-    }
+	else if (strcmp(name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
+			ESP_LOGI(TAG, "Received value = %s for %s - %s",
+					val.val.b? "true" : "false", dev_name, name);
+		if(strcmp(dev_name, "Bedroom Light") == 0){
+			app_driver_set_light0_state(val.val.b);
+		}
+		else if(strcmp(dev_name, "Wall Light") == 0){
+			app_driver_set_light1_state(val.val.b);
+		}
+		else{
+			/* Silently ignoring invalid params */
+			return ESP_OK;
+		}
+	}
 	esp_rmaker_update_param(dev_name, name, val);
     return ESP_OK;
 }
@@ -93,10 +103,10 @@ void app_main()
     }
 
     /* Create a Light device and add the relevant parameters to it */
-    esp_rmaker_create_lightbulb_device("Bedroom Light", common_callback, NULL, DEFAULT_LIGHT_POWER);
-	esp_rmaker_create_lightbulb_device("Wall Light", common_callback, NULL, DEFAULT_LIGHT_POWER);
+    esp_rmaker_create_lightbulb_device("Bedroom Light", common_callback, NULL, DEFAULT_LIGHT0_POWER_STATE);
+	esp_rmaker_create_lightbulb_device("Wall Light", common_callback, NULL, DEFAULT_LIGHT1_POWER_STATE);
 	
-	esp_rmaker_create_lightbulb_device("RGB Light", common_callback, NULL, DEFAULT_RGB_LIGHT_POWER);
+	esp_rmaker_create_lightbulb_device("RGB Light", common_callback, NULL, DEFAULT_RGB_LIGHT_POWER_STATE);
     esp_rmaker_device_add_brightness_param("RGB Light", "Brightness", DEFAULT_BRIGHTNESS);
     esp_rmaker_device_add_hue_param("RGB Light", "Hue", DEFAULT_HUE);
     esp_rmaker_device_add_saturation_param("RGB Light", "Saturation", DEFAULT_SATURATION);
