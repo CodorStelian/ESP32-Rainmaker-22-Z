@@ -3,8 +3,8 @@
 # project subdirectory.
 #
 
-PROJECT_NAME := multi_device
-PROJECT_VER := 1.1
+PROJECT_NAME := esp_rainmaker_22_z
+PROJECT_VER := 1.6
 
 # Add RainMaker components and other common application components
 EXTRA_COMPONENT_DIRS += $(PROJECT_PATH)/../../components $(PROJECT_PATH)/../common
