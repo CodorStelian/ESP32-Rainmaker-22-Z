@@ -23,14 +23,19 @@
 #include <iot_button.h>
 #include <led_strip.h>
 #include <esp_rmaker_core.h>
+#include <esp_rmaker_standard_types.h>
 #include <esp_rmaker_standard_params.h>
 
+#include <app_reset.h>
 #include "app_priv.h"
 
 #define RMT_TX_CHANNEL RMT_CHANNEL_0
 /* This is the button that is used for toggling the power */
 #define BUTTON_GPIO          0
 #define BUTTON_ACTIVE_LEVEL  0
+
+#define WIFI_RESET_BUTTON_TIMEOUT       3
+#define FACTORY_RESET_BUTTON_TIMEOUT    10
 
 static uint8_t g_i2c_sda = DEFAULT_I2C_SDA_GPIO;
 static uint8_t g_i2c_scl = DEFAULT_I2C_SCL_GPIO;
@@ -226,7 +231,9 @@ esp_err_t app_driver_rgbpixel_set(uint32_t hue, uint32_t saturation, uint32_t br
     /* Whenever this function is called, light power will be ON */
     if (!g_rgbpixel_power_state) {
         g_rgbpixel_power_state = true;
-        esp_rmaker_update_param("RGB Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(g_rgbpixel_power_state));
+		esp_rmaker_param_update_and_report(
+                esp_rmaker_device_get_param_by_type(rgb_ring_light, ESP_RMAKER_PARAM_POWER),
+                esp_rmaker_bool(g_rgbpixel_power_state));
     }
     return app_driver_rgbpixel_set_pixel(hue, saturation, brightness);
 }
@@ -270,7 +277,9 @@ static void app_driver_sensor_bh1750_update(void *pvParameters)
 	if (bh1750_read(&dev17, &lux) != ESP_OK)
 		ESP_LOGE(TAG, "BH1750 error, could not read sensor data");
 	g_sensor_luminosity = lux;
-    esp_rmaker_update_param("Luminosity Sensor", "luminosity", esp_rmaker_float(g_sensor_luminosity));
+	esp_rmaker_param_update_and_report(
+                esp_rmaker_device_get_param_by_name(luminosity_sensor, "luminosity"),
+                esp_rmaker_float(g_sensor_luminosity));
 }
 static void app_driver_sensor_sht31_update(void *pvParameters)
 {
@@ -285,8 +294,12 @@ static void app_driver_sensor_sht31_update(void *pvParameters)
 	ESP_ERROR_CHECK(sht3x_measure(&dev31, &temp, &humid));
 	g_sensor_temperature = temp;
 	g_sensor_humidity = humid;
-	esp_rmaker_update_param("Temperature Sensor", ESP_RMAKER_DEF_TEMPERATURE_NAME, esp_rmaker_float(g_sensor_temperature)); 
-	esp_rmaker_update_param("Humidity Sensor", "humidity", esp_rmaker_float(g_sensor_humidity));
+	esp_rmaker_param_update_and_report(
+                esp_rmaker_device_get_param_by_type(temperature_sensor, ESP_RMAKER_PARAM_TEMPERATURE),
+                esp_rmaker_float(g_sensor_temperature));
+	esp_rmaker_param_update_and_report(
+                esp_rmaker_device_get_param_by_name(humidity_sensor, "humidity"),
+                esp_rmaker_float(g_sensor_humidity));
 }
 
 uint16_t app_driver_sensor_get_current_luminosity()
@@ -391,15 +404,9 @@ static void push_btn_cb(void *arg)
 	ESP_LOGI(TAG, "Change state of Bedroom Light and sync it with cloud");
 	bool new_light0_state = !g_light0_power_state;
 	app_driver_set_light0_state(new_light0_state);
-	esp_rmaker_update_param("Bedroom Light", ESP_RMAKER_DEF_POWER_NAME, esp_rmaker_bool(new_light0_state));
-}
-
-static void button_press_3sec_cb(void *arg)
-{
-	ESP_LOGW(TAG, "Erase flash in progress, restart is required");
-    nvs_flash_deinit();
-    nvs_flash_erase();
-    esp_restart();
+	esp_rmaker_param_update_and_report(
+                esp_rmaker_device_get_param_by_type(bedroom_light, ESP_RMAKER_PARAM_POWER),
+                esp_rmaker_bool(new_light0_state));
 }
 
 static void set_light0_power_state(bool target)
@@ -416,8 +423,10 @@ void app_driver_init()
 {
     button_handle_t btn_handle = iot_button_create(BUTTON_GPIO, BUTTON_ACTIVE_LEVEL);
     if (btn_handle) {
-		iot_button_set_evt_cb(btn_handle, BUTTON_CB_RELEASE, push_btn_cb, "RELEASE");
-        iot_button_add_on_press_cb(btn_handle, 3, button_press_3sec_cb, NULL);
+		/* Register a callback for a button tap (short press) event */
+        iot_button_set_evt_cb(btn_handle, BUTTON_CB_TAP, push_btn_cb, NULL);
+        /* Register Wi-Fi reset and factory reset functionality on same button */
+        app_reset_button_register(btn_handle, WIFI_RESET_BUTTON_TIMEOUT, FACTORY_RESET_BUTTON_TIMEOUT);
     }
 
     /* Configure the GPIO */

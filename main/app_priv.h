@@ -33,6 +33,13 @@
 #define DEFAULT_REPORTING_PERIOD_BH1750    60 /* Seconds */
 #define DEFAULT_REPORTING_PERIOD_SHT31    305 /* Seconds */
 
+extern esp_rmaker_device_t *bedroom_light;
+extern esp_rmaker_device_t *wall_light;
+extern esp_rmaker_device_t *rgb_ring_light;
+extern esp_rmaker_device_t *temperature_sensor;
+extern esp_rmaker_device_t *humidity_sensor;
+extern esp_rmaker_device_t *luminosity_sensor;
+
 void app_driver_init(void);
 
 int app_driver_set_light0_state(bool state);

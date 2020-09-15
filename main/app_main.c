@@ -24,41 +24,51 @@
 
 static const char *TAG = "app_main";
 
+esp_rmaker_device_t *bedroom_light;
+esp_rmaker_device_t *wall_light;
+esp_rmaker_device_t *rgb_ring_light;
+esp_rmaker_device_t *temperature_sensor;
+esp_rmaker_device_t *humidity_sensor;
+esp_rmaker_device_t *luminosity_sensor;
+
 extern const char ota_server_cert[] asm("_binary_server_crt_start");
 
 /* Callback to handle commands received from the RainMaker cloud */
-static esp_err_t rmaker_app_callback(const char *dev_name, const char *name, esp_rmaker_param_val_t val, void *priv_data)
+static esp_err_t write_cb(const esp_rmaker_device_t *device, const esp_rmaker_param_t *param,
+            const esp_rmaker_param_val_t val, void *priv_data, esp_rmaker_write_ctx_t *ctx)
 {
-	if(strcmp(dev_name, "RGB Light") == 0) {
-		if (strcmp(name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
+	const char *device_name = esp_rmaker_device_get_name(device);
+    const char *param_name = esp_rmaker_param_get_name(param);
+	if(strcmp(device_name, "RGB Light") == 0) {
+		if (strcmp(param_name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
 			ESP_LOGI(TAG, "Received value = %s for %s - %s",
-					val.val.b? "true" : "false", dev_name, name);
+					val.val.b? "true" : "false", device_name, param_name);
 			app_driver_rgbpixel_set_power(val.val.b);
-		} else if (strcmp(name, "Brightness") == 0) {
+		} else if (strcmp(param_name, "Brightness") == 0) {
 			ESP_LOGI(TAG, "Received value = %d for %s - %s",
-					val.val.i, dev_name, name);
+					val.val.i, device_name, param_name);
 			app_driver_rgbpixel_set_brightness(val.val.i);
-		} else if (strcmp(name, "Hue") == 0) {
+		} else if (strcmp(param_name, "Hue") == 0) {
 			ESP_LOGI(TAG, "Received value = %d for %s - %s",
-					val.val.i, dev_name, name);
+					val.val.i, device_name, param_name);
 			app_driver_rgbpixel_set_hue(val.val.i);
-		} else if (strcmp(name, "Saturation") == 0) {
+		} else if (strcmp(param_name, "Saturation") == 0) {
 			ESP_LOGI(TAG, "Received value = %d for %s - %s",
-					val.val.i, dev_name, name);
+					val.val.i, device_name, param_name);
 			app_driver_rgbpixel_set_saturation(val.val.i);
 		}
 	}
-	else if(strcmp(dev_name, "Bedroom Light") == 0) {
+	else if(strcmp(device_name, "Bedroom Light") == 0) {
 		ESP_LOGI(TAG, "Received value = %s for %s - %s",
-				val.val.b? "true" : "false", dev_name, name);
-		if (strcmp(name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
+				val.val.b? "true" : "false", device_name, param_name);
+		if (strcmp(param_name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
 			app_driver_set_light0_state(val.val.b);
 		}
 	}
-	else if(strcmp(dev_name, "Wall Light") == 0) {
+	else if(strcmp(device_name, "Wall Light") == 0) {
 		ESP_LOGI(TAG, "Received value = %s for %s - %s",
-				val.val.b? "true" : "false", dev_name, name);
-		if (strcmp(name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
+				val.val.b? "true" : "false", device_name, param_name);
+		if (strcmp(param_name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
 			app_driver_set_light1_state(val.val.b);
 		}
 	}
@@ -66,7 +76,7 @@ static esp_err_t rmaker_app_callback(const char *dev_name, const char *name, esp
 		/* Silently ignoring invalid params */
 		return ESP_OK;
 	}
-	esp_rmaker_update_param(dev_name, name, val);
+	esp_rmaker_param_update_and_report(param, val);
     return ESP_OK;
 }
 
@@ -93,40 +103,53 @@ void app_main()
      * Note that this should be called after app_wifi_init() but before app_wifi_start()
      * */
     esp_rmaker_config_t rainmaker_cfg = {
-        .info = {
-            .name = "Smart Home 22-Z",
-            .type = "Device Hub",
-        },
         .enable_time_sync = false,
     };
-    err = esp_rmaker_init(&rainmaker_cfg);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Could not initialise ESP RainMaker. Aborting!!!");
+   esp_rmaker_node_t *node = esp_rmaker_node_init(&rainmaker_cfg, "Smart Home 22-Z", "Device Hub");
+    if (!node) {
+        ESP_LOGE(TAG, "Could not initialise node. Aborting!!!");
         vTaskDelay(5000/portTICK_PERIOD_MS);
         abort();
     }
 
     /* Create a Light device and add the relevant parameters to it */
-	esp_rmaker_create_lightbulb_device("Bedroom Light", rmaker_app_callback, NULL, DEFAULT_LIGHT0_POWER_STATE);
-	esp_rmaker_create_lightbulb_device("Wall Light", rmaker_app_callback, NULL, DEFAULT_LIGHT1_POWER_STATE);
+	bedroom_light = esp_rmaker_lightbulb_device_create("Bedroom Light", NULL, DEFAULT_LIGHT0_POWER_STATE);
+    esp_rmaker_device_add_cb(bedroom_light, write_cb, NULL);
+	esp_rmaker_node_add_device(node, bedroom_light);
 	
-	esp_rmaker_create_lightbulb_device("RGB Light", rmaker_app_callback, NULL, DEFAULT_RGBPIXEL_POWER_STATE);
-	esp_rmaker_device_add_brightness_param("RGB Light", "Brightness", DEFAULT_RGBPIXEL_BRIGHTNESS);
-	esp_rmaker_device_add_hue_param("RGB Light", "Hue", DEFAULT_RGBPIXEL_HUE);
-	esp_rmaker_device_add_saturation_param("RGB Light", "Saturation", DEFAULT_RGBPIXEL_SATURATION);
+   /* Create a Light device and add the relevant parameters to it */
+	wall_light = esp_rmaker_lightbulb_device_create("Wall Light", NULL, DEFAULT_LIGHT1_POWER_STATE);
+    esp_rmaker_device_add_cb(wall_light, write_cb, NULL);
+	esp_rmaker_node_add_device(node, wall_light);
+	
+   /* Create a Light device and add the relevant parameters to it */
+	rgb_ring_light = esp_rmaker_lightbulb_device_create("RGB Light", NULL, DEFAULT_RGBPIXEL_POWER_STATE);
+    esp_rmaker_device_add_cb(rgb_ring_light, write_cb, NULL);
+	esp_rmaker_device_add_param(rgb_ring_light, esp_rmaker_brightness_param_create("Brightness", DEFAULT_RGBPIXEL_BRIGHTNESS));
+    esp_rmaker_device_add_param(rgb_ring_light, esp_rmaker_hue_param_create("Hue", DEFAULT_RGBPIXEL_HUE));
+    esp_rmaker_device_add_param(rgb_ring_light, esp_rmaker_saturation_param_create("Saturation", DEFAULT_RGBPIXEL_SATURATION));
+	esp_rmaker_node_add_device(node, rgb_ring_light);
 
-	esp_rmaker_create_temp_sensor_device("Temperature Sensor", NULL, NULL, app_driver_sensor_get_current_temperature());
+	/* Create a Temperature Sensor device and add the relevant parameters to it */
+    temperature_sensor = esp_rmaker_temp_sensor_device_create("Temperature Sensor", NULL, app_driver_sensor_get_current_temperature());
+    esp_rmaker_node_add_device(node, temperature_sensor);
+
+	/* Create a Humidity Sensor device and add the relevant parameters to it */
+	humidity_sensor = esp_rmaker_device_create("Humidity Sensor", NULL, NULL);
+	esp_rmaker_device_add_param(humidity_sensor, esp_rmaker_name_param_create("name", "Humidity Sensor"));
+	esp_rmaker_param_t *humidity_param = esp_rmaker_param_create("humidity", NULL, esp_rmaker_float(app_driver_sensor_get_current_humidity()), PROP_FLAG_READ);
+	esp_rmaker_device_add_param(humidity_sensor, humidity_param);
+	esp_rmaker_device_assign_primary_param(humidity_sensor, humidity_param);
+	esp_rmaker_node_add_device(node, humidity_sensor);
 	
-	esp_rmaker_create_device("Humidity Sensor", NULL, NULL, NULL);
-	esp_rmaker_device_add_name_param("Humidity Sensor", ESP_RMAKER_DEF_NAME_PARAM);
-	esp_rmaker_device_add_param("Humidity Sensor", "humidity", esp_rmaker_float(app_driver_sensor_get_current_humidity()), PROP_FLAG_READ);
-	esp_rmaker_device_assign_primary_param("Humidity Sensor", "humidity");
-	
-	esp_rmaker_create_device("Luminosity Sensor", NULL, NULL, NULL);
-	esp_rmaker_device_add_name_param("Luminosity Sensor", ESP_RMAKER_DEF_NAME_PARAM);
-	esp_rmaker_device_add_param("Luminosity Sensor", "luminosity", esp_rmaker_float(app_driver_sensor_get_current_luminosity()), PROP_FLAG_READ);
-	esp_rmaker_device_assign_primary_param("Luminosity Sensor", "luminosity");
-	
+	/* Create a Luminosity Sensor device and add the relevant parameters to it */
+	luminosity_sensor = esp_rmaker_device_create("Luminosity Sensor", NULL, NULL);
+	esp_rmaker_device_add_param(luminosity_sensor, esp_rmaker_name_param_create("name", "Luminosity Sensor"));
+	esp_rmaker_param_t *luminosity_param = esp_rmaker_param_create("luminosity", NULL, esp_rmaker_float(app_driver_sensor_get_current_humidity()), PROP_FLAG_READ);
+	esp_rmaker_device_add_param(luminosity_sensor, luminosity_param);
+	esp_rmaker_device_assign_primary_param(luminosity_sensor, luminosity_param);
+	esp_rmaker_node_add_device(node, luminosity_sensor);
+
 	/* Enable OTA */
 	esp_rmaker_ota_config_t ota_config = {
 		.server_cert = ota_server_cert,
@@ -136,10 +159,15 @@ void app_main()
     /* Start the ESP RainMaker Agent */
     esp_rmaker_start();
 
-    /* Start the Wi-Fi.
+   /* Start the Wi-Fi.
      * If the node is provisioned, it will start connection attempts,
      * else, it will start Wi-Fi provisioning. The function will return
      * after a connection has been successfully established
      */
-    app_wifi_start();
+    err = app_wifi_start(POP_TYPE_RANDOM);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Could not start Wifi. Aborting!!!");
+        vTaskDelay(5000/portTICK_PERIOD_MS);
+        abort();
+    }
 }
