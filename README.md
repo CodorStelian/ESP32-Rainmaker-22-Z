@@ -1,4 +1,6 @@
-# ESP Rianmaker 22 Z - Multi Device
+# ESP Rainmaker 22 Z - Multi Device
+
+> Note: Adapted to RainMaker code restructure and API changes - Sept 2020.
 
 ## Build and Flash firmware
 
