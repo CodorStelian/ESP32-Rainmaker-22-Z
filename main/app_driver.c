@@ -48,6 +48,8 @@ static bool g_light0_power_state = DEFAULT_LIGHT0_POWER_STATE;
 static bool g_light1_power_state = DEFAULT_LIGHT1_POWER_STATE;
 
 static led_strip_t *g_rgbpixel_strip;
+static esp_timer_handle_t rgbpixel_anim_timer;
+static esp_timer_handle_t rgbpixel_anim_duration_timer;
 static uint8_t g_gpio_rgbpixel_strip = DEFAULT_OUTPUT_GPIO_RGBPIXEL_STRIP;
 static uint8_t g_rgbpixel_strip_pixels = DEFAULT_RGBPIXEL_STRIP_PIXELS;
 static bool g_rgbpixel_power_state = DEFAULT_RGBPIXEL_POWER_STATE;
@@ -62,8 +64,6 @@ uint32_t rgbpixel_pulse_red_min;
 uint32_t rgbpixel_pulse_red_max;
 uint32_t rgbpixel_pulse_green_min;
 uint32_t rgbpixel_pulse_green_max;
-static esp_timer_handle_t rgbpixel_anim_timer;
-static esp_timer_handle_t rgbpixel_anim_change_timer;
 uint8_t rgbpixel_anim_style = 0;
 uint8_t rgbpixel_anim_counter = 0;
 bool rgbpixel_anim_up = true;
@@ -190,8 +190,6 @@ esp_err_t enhanced_rgbpixel_anim_pulse(uint32_t cmin, uint32_t cmax, double rati
 
 static void enhanced_rgbpixel_anim(void *priv)
 {
-	if(!g_rgbpixel_power_state)
-	{
 		if(rgbpixel_anim_counter <= 23)
 		rgbpixel_anim_counter = rgbpixel_anim_counter + 1;
 		else
@@ -212,18 +210,32 @@ static void enhanced_rgbpixel_anim(void *priv)
 			enhanced_rgbpixel_anim_pulse(rgbpixel_pulse_green_min, rgbpixel_pulse_green_max, ratio, rgbpixel_anim_up);
 		}
 		g_rgbpixel_strip->refresh(g_rgbpixel_strip, 100);
-	}
 }
 
-static void enhanced_rgbpixel_anim_change(void *priv)
+static void enhanced_rgbpixel_anim_duration(void *priv)
 {
+	esp_timer_stop(rgbpixel_anim_timer);
+	ESP_LOGI(TAG, "Enhanced rgbpixel animation is ending now");
 	if(!g_rgbpixel_power_state)
-	{
-		if(rgbpixel_anim_style <= 2)
-		rgbpixel_anim_style += 1;
-		else
+		g_rgbpixel_strip->clear(g_rgbpixel_strip, 100);
+	else
+		app_driver_rgbpixel_set(g_rgbpixel_hue, g_rgbpixel_saturation, g_rgbpixel_value);
+}
+
+esp_err_t enhanced_rgbpixel_set_anim(const char *type)
+{
+	if(strcmp(type, "ERROR") == 0) {
+		rgbpixel_anim_style = 2;
+	} else if (strcmp(type, "OTA") == 0) {
+		rgbpixel_anim_style = 2;
+	} else if (strcmp(type, "LOAD") == 0) {
 		rgbpixel_anim_style = 0;
+	} else if (strcmp(type, "MOVE") == 0) {
+		rgbpixel_anim_style = 1;
 	}
+	esp_timer_start_periodic(rgbpixel_anim_timer, DEFAULT_REFRESH_ANIM_PERIOD_RGBPIXEL * 1000U);
+	esp_timer_start_once(rgbpixel_anim_duration_timer, DEFAULT_ANIM_DURATION_RGBPIXEL * 1000000U);
+	return ESP_OK;
 }
 
 esp_err_t app_driver_rgbpixel_set(uint32_t hue, uint32_t saturation, uint32_t brightness)
@@ -352,23 +364,19 @@ esp_err_t app_driver_rgbpixel_init(void)
         .callback = enhanced_rgbpixel_anim,
         .dispatch_method = ESP_TIMER_TASK,
         .name = "rgbpixel_anim_tm"
-    };esp_timer_create_args_t rgbpixel_anim_change_timer_conf = {
-        .callback = enhanced_rgbpixel_anim_change,
-        .dispatch_method = ESP_TIMER_TASK,
-        .name = "rgbpixel_anim_change_tm"
     };
-	if (esp_timer_create(&rgbpixel_anim_timer_conf, &rgbpixel_anim_timer) == ESP_OK) {
-        esp_timer_start_periodic(rgbpixel_anim_timer, DEFAULT_REFRESH_ANIM_PERIOD_RGBPIXEL * 1000U);
+	esp_timer_create_args_t rgbpixel_anim_duration_timer_conf = {
+        .callback = enhanced_rgbpixel_anim_duration,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "rgbpixel_anim_duration_tm"
+    };
+	if (esp_timer_create(&rgbpixel_anim_timer_conf, &rgbpixel_anim_timer) != ESP_OK) {
+        return ESP_FAIL;
     }
-	else{
-		return ESP_FAIL;
-	}
-	if (esp_timer_create(&rgbpixel_anim_change_timer_conf, &rgbpixel_anim_change_timer) == ESP_OK) {
-        esp_timer_start_periodic(rgbpixel_anim_change_timer, DEFAULT_CHANGE_ANIM_PERIOD_RGBPIXEL * 1000000U);
+	if (esp_timer_create(&rgbpixel_anim_duration_timer_conf, &rgbpixel_anim_duration_timer) != ESP_OK) {
+        return ESP_FAIL;
     }
-	else{
-		return ESP_FAIL;
-	}
+
     return ESP_OK;
 }
 

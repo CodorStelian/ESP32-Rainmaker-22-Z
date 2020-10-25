@@ -28,7 +28,7 @@
 #define DEFAULT_RGBPIXEL_SATURATION  100
 #define DEFAULT_RGBPIXEL_BRIGHTNESS  15
 #define DEFAULT_REFRESH_ANIM_PERIOD_RGBPIXEL 40 /* Miliseconds */
-#define DEFAULT_CHANGE_ANIM_PERIOD_RGBPIXEL 10 /* Seconds */
+#define DEFAULT_ANIM_DURATION_RGBPIXEL 3 /* Seconds */
 
 #define DEFAULT_REPORTING_PERIOD_BH1750    60 /* Seconds */
 #define DEFAULT_REPORTING_PERIOD_SHT31    305 /* Seconds */
@@ -52,6 +52,7 @@ esp_err_t app_driver_rgbpixel_set_power(bool power);
 esp_err_t app_driver_rgbpixel_set_brightness(uint16_t brightness);
 esp_err_t app_driver_rgbpixel_set_hue(uint16_t hue);
 esp_err_t app_driver_rgbpixel_set_saturation(uint16_t saturation);
+esp_err_t enhanced_rgbpixel_set_anim(const char *type);
 
 uint16_t app_driver_sensor_get_current_luminosity();
 float app_driver_sensor_get_current_temperature();
