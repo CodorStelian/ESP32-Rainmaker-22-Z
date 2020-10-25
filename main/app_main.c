@@ -15,6 +15,7 @@
 
 #include <esp_rmaker_core.h>
 #include <esp_rmaker_ota.h>
+#include <esp_rmaker_schedule.h>
 #include <esp_rmaker_standard_params.h>
 #include <esp_rmaker_standard_devices.h>
 
@@ -156,6 +157,9 @@ void app_main()
 	};
 	esp_rmaker_ota_enable(&ota_config, OTA_USING_PARAMS);
 
+	/* Enable scheduling */
+    esp_rmaker_schedule_enable();
+	
     /* Start the ESP RainMaker Agent */
     esp_rmaker_start();
 
