@@ -22,6 +22,10 @@
 #include <i2cdev.h>
 #include <esp_err.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define BH1750_ADDR_LO 0x23 //!< I2C address when ADDR pin floating/low
 #define BH1750_ADDR_HI 0x5c //!< I2C address when ADDR pin high
 
@@ -101,6 +105,9 @@ esp_err_t bh1750_set_measurement_time(i2c_dev_t *dev, uint8_t time);
  */
 esp_err_t bh1750_read(i2c_dev_t *dev, uint16_t *level);
 
+#ifdef __cplusplus
+}
+#endif
 
 /**@}*/
 
