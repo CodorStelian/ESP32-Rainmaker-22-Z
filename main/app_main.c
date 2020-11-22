@@ -60,17 +60,21 @@ static esp_err_t write_cb(const esp_rmaker_device_t *device, const esp_rmaker_pa
 		}
 	}
 	else if(strcmp(device_name, "Bedroom Light") == 0) {
-		ESP_LOGI(TAG, "Received value = %s for %s - %s",
-				val.val.b? "true" : "false", device_name, param_name);
 		if (strcmp(param_name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
-			app_driver_set_light0_state(val.val.b);
+			ESP_LOGI(TAG, "Received value = %s for %s - %s",
+					val.val.b? "true" : "false", device_name, param_name);
+			app_driver_set_light0_power(val.val.b);
+		} else if (strcmp(param_name, "Brightness") == 0) {
+			ESP_LOGI(TAG, "Received value = %d for %s - %s",
+					val.val.i, device_name, param_name);
+			app_driver_set_light0_brightness(val.val.i);
 		}
 	}
 	else if(strcmp(device_name, "Wall Light") == 0) {
 		ESP_LOGI(TAG, "Received value = %s for %s - %s",
 				val.val.b? "true" : "false", device_name, param_name);
 		if (strcmp(param_name, ESP_RMAKER_DEF_POWER_NAME) == 0) {
-			app_driver_set_light1_state(val.val.b);
+			app_driver_set_light3_state(val.val.b);
 		}
 	}
 	else{
@@ -117,10 +121,11 @@ void app_main()
     /* Create a Light device and add the relevant parameters to it */
 	bedroom_light = esp_rmaker_lightbulb_device_create("Bedroom Light", NULL, DEFAULT_LIGHT0_POWER_STATE);
     esp_rmaker_device_add_cb(bedroom_light, write_cb, NULL);
+	esp_rmaker_device_add_param(bedroom_light, esp_rmaker_brightness_param_create("Brightness", DEFAULT_LIGHT0_BRIGHTNESS));
 	esp_rmaker_node_add_device(node, bedroom_light);
 	
    /* Create a Light device and add the relevant parameters to it */
-	wall_light = esp_rmaker_lightbulb_device_create("Wall Light", NULL, DEFAULT_LIGHT1_POWER_STATE);
+	wall_light = esp_rmaker_lightbulb_device_create("Wall Light", NULL, DEFAULT_LIGHT3_POWER_STATE);
     esp_rmaker_device_add_cb(wall_light, write_cb, NULL);
 	esp_rmaker_node_add_device(node, wall_light);
 	

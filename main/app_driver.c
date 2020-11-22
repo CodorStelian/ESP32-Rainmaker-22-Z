@@ -45,7 +45,8 @@ static uint8_t g_gpio_relay_1 = DEFAULT_OUTPUT_GPIO_RELAY_1;
 static uint8_t g_gpio_relay_2 = DEFAULT_OUTPUT_GPIO_RELAY_2;
 static uint8_t g_gpio_relay_3 = DEFAULT_OUTPUT_GPIO_RELAY_3;
 static bool g_light0_power_state = DEFAULT_LIGHT0_POWER_STATE;
-static bool g_light1_power_state = DEFAULT_LIGHT1_POWER_STATE;
+static bool g_light3_power_state = DEFAULT_LIGHT3_POWER_STATE;
+static uint16_t g_light0_value = DEFAULT_LIGHT0_BRIGHTNESS;
 
 static led_strip_t *g_rgbpixel_strip;
 static esp_timer_handle_t rgbpixel_anim_timer;
@@ -411,7 +412,7 @@ static void push_btn_cb(void *arg)
 {
 	ESP_LOGI(TAG, "Change state of Bedroom Light and sync it with cloud");
 	bool new_light0_state = !g_light0_power_state;
-	app_driver_set_light0_state(new_light0_state);
+	app_driver_set_light0_power(new_light0_state);
 	esp_rmaker_param_update_and_report(
                 esp_rmaker_device_get_param_by_type(bedroom_light, ESP_RMAKER_PARAM_POWER),
                 esp_rmaker_bool(new_light0_state));
@@ -421,10 +422,17 @@ static void set_light0_power_state(bool target)
 {
 	gpio_set_level(g_gpio_relay_0, target);
 }
-
 static void set_light1_power_state(bool target)
 {
 	gpio_set_level(g_gpio_relay_1, target);
+}
+static void set_light2_power_state(bool target)
+{
+	gpio_set_level(g_gpio_relay_2, target);
+}
+static void set_light3_power_state(bool target)
+{
+	gpio_set_level(g_gpio_relay_3, target);
 }
 
 void app_driver_init()
@@ -449,20 +457,64 @@ void app_driver_init()
 	app_driver_rgbpixel_init();
 }
 
-int IRAM_ATTR app_driver_set_light0_state(bool state)
+int IRAM_ATTR app_driver_set_light0()
 {
-	if(g_light0_power_state != state) {
-		g_light0_power_state = state;
-		set_light0_power_state(g_light0_power_state);
+	if(g_light0_power_state){
+		if(g_light0_value == 0){
+			set_light0_power_state(0);
+			set_light1_power_state(0);
+			set_light2_power_state(0);
+		}
+		else if(g_light0_value >= 1 && g_light0_value <=25) {
+			set_light0_power_state(1);
+			set_light1_power_state(0);
+			set_light2_power_state(0);
+		}
+		else if(g_light0_value >= 26 && g_light0_value <=50) {
+			set_light0_power_state(1);
+			set_light1_power_state(0);
+			set_light2_power_state(1);
+		}
+		else if(g_light0_value >= 51 && g_light0_value <=75) {
+			set_light0_power_state(1);
+			set_light1_power_state(1);
+			set_light2_power_state(0);
+		}
+		else if(g_light0_value >= 76) {
+			set_light0_power_state(1);
+			set_light1_power_state(1);
+			set_light2_power_state(1);
+		}
+	}
+	else {
+		set_light0_power_state(0);
+		set_light1_power_state(0);
+		set_light2_power_state(0);
 	}
 	return ESP_OK;
 }
 
-int IRAM_ATTR app_driver_set_light1_state(bool state)
+esp_err_t app_driver_set_light0_power(bool power)
 {
-	if(g_light1_power_state != state) {
-		g_light1_power_state = state;
-		set_light1_power_state(g_light1_power_state);
+    g_light0_power_state = power;
+    app_driver_set_light0();
+    return ESP_OK;
+}
+esp_err_t app_driver_set_light0_brightness(uint16_t brightness)
+{
+    g_light0_value = brightness;
+	g_light0_power_state = 1;
+	esp_rmaker_param_update_and_report(
+                esp_rmaker_device_get_param_by_type(bedroom_light, ESP_RMAKER_PARAM_POWER),
+                esp_rmaker_bool(g_light0_power_state));
+    return app_driver_set_light0();
+}
+
+int IRAM_ATTR app_driver_set_light3_state(bool state)
+{
+	if(g_light3_power_state != state) {
+		g_light3_power_state = state;
+		set_light3_power_state(g_light3_power_state);
 	}
 	return ESP_OK;
 }
@@ -472,7 +524,7 @@ bool app_driver_get_light0_state(void)
 	return g_light0_power_state;
 }
 
-bool app_driver_get_light1_state(void)
+bool app_driver_get_light3_state(void)
 {
-	return g_light1_power_state;
+	return g_light3_power_state;
 }

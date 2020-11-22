@@ -20,7 +20,8 @@
 #define DEFAULT_OUTPUT_GPIO_RELAY_3 16
 
 #define DEFAULT_LIGHT0_POWER_STATE false
-#define DEFAULT_LIGHT1_POWER_STATE false
+#define DEFAULT_LIGHT3_POWER_STATE false
+#define DEFAULT_LIGHT0_BRIGHTNESS  25
 
 #define DEFAULT_RGBPIXEL_STRIP_PIXELS 24
 #define DEFAULT_RGBPIXEL_POWER_STATE false
@@ -42,10 +43,11 @@ extern esp_rmaker_device_t *luminosity_sensor;
 
 void app_driver_init(void);
 
-int app_driver_set_light0_state(bool state);
-int app_driver_set_light1_state(bool state);
+esp_err_t app_driver_set_light0_power(bool power);
+esp_err_t app_driver_set_light0_brightness(uint16_t brightness);
+int app_driver_set_light3_state(bool state);
 bool app_driver_get_light0_state(void);
-bool app_driver_get_light1_state(void);
+bool app_driver_get_light3_state(void);
 
 esp_err_t app_driver_rgbpixel_set(uint32_t hue, uint32_t saturation, uint32_t brightness);
 esp_err_t app_driver_rgbpixel_set_power(bool power);
