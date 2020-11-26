@@ -4,7 +4,7 @@
 #
 
 PROJECT_NAME := esp_rainmaker_22_z
-PROJECT_VER := 1.6
+PROJECT_VER := 1.7.3
 
 # Add RainMaker components and other common application components
 EXTRA_COMPONENT_DIRS += $(PROJECT_PATH)/../../components $(PROJECT_PATH)/../common

@@ -5,6 +5,6 @@ cmake_minimum_required(VERSION 3.5)
 # Add RainMaker components and other common application components
 set(EXTRA_COMPONENT_DIRS ${CMAKE_CURRENT_LIST_DIR}/../../components ${CMAKE_CURRENT_LIST_DIR}/../common)
 
-set(PROJECT_VER "1.6")
+set(PROJECT_VER "1.7.3")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(esp_rainmaker_22_z)
