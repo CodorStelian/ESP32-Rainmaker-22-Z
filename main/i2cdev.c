@@ -24,6 +24,9 @@ typedef struct {
 
 static i2c_port_state_t states[I2C_NUM_MAX];
 
+// I2CDEV TIMEOUT range between 100 and 5000
+#define CONFIG_I2CDEV_TIMEOUT 1000
+
 #define SEMAPHORE_TAKE(port) do { \
         if (!xSemaphoreTake(states[port].lock, CONFIG_I2CDEV_TIMEOUT / portTICK_RATE_MS)) \
         { \
